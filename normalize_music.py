@@ -172,9 +172,9 @@ class MusicNormalizer:
                     measured_tp = loudness_stats.get('input_tp')
                     measured_lra = loudness_stats.get('input_lra')
                     measured_thresh = loudness_stats.get('input_thresh')
-            except (json.JSONDecodeError, ValueError):
+            except (json.JSONDecodeError, ValueError) as e:
                 # If parsing fails, fall back to single-pass
-                log("  ⚠️  Two-pass parsing failed, using single-pass mode")
+                log(f"  ⚠️  Two-pass parsing failed ({str(e)}), using single-pass mode")
                 measured_i = None
             
             # Second pass: Apply normalization with measured parameters
