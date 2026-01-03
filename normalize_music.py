@@ -8,6 +8,7 @@ from typing import List, Tuple
 import threading
 import queue
 import concurrent.futures
+import json
 
 class MusicNormalizer:
     def __init__(self, target_lufs: float = -16.0):
@@ -113,8 +114,8 @@ class MusicNormalizer:
                 # Cambia estensione output in .m4a
                 output_path = output_path.with_suffix('.m4a')
             
-            # Misura loudness
-            log("📊 Analisi loudness...")
+            # Misura loudness (First pass)
+            log("📊 Analisi loudness (Pass 1/2)...")
             integrated, true_peak = self.measure_loudness(input_path, ffmpeg_path)
             
             if integrated is None or integrated < -70:
@@ -135,17 +136,67 @@ class MusicNormalizer:
                 shutil.copy2(input_path, output_path)
                 return True
             
-            # Normalizza
-            log("⚙️  Normalizzazione...")
+            # Normalizza con two-pass loudnorm
+            log("⚙️  Normalizzazione (Pass 2/2)...")
             
-            # Comandi base per audio/video
+            # First pass: Get detailed loudness stats for two-pass normalization
+            first_pass_cmd = [
+                ffmpeg_path,
+                '-i', str(input_path),
+                '-af', f'loudnorm=I={self.target_lufs}:TP=-1.5:LRA=11:print_format=json',
+                '-f', 'null',
+                '-'
+            ]
+            
+            first_pass_result = subprocess.run(first_pass_cmd, 
+                                              capture_output=True, 
+                                              text=True,
+                                              timeout=600)
+            
+            # Parse first pass output to get measured parameters
+            output = first_pass_result.stderr
+            measured_i = None
+            measured_tp = None
+            measured_lra = None
+            measured_thresh = None
+            
+            # Extract JSON section from output
+            try:
+                # Find the JSON block in stderr
+                json_start = output.rfind('{')
+                json_end = output.rfind('}') + 1
+                if json_start != -1 and json_end > json_start:
+                    json_str = output[json_start:json_end]
+                    loudness_stats = json.loads(json_str)
+                    measured_i = loudness_stats.get('input_i')
+                    measured_tp = loudness_stats.get('input_tp')
+                    measured_lra = loudness_stats.get('input_lra')
+                    measured_thresh = loudness_stats.get('input_thresh')
+            except (json.JSONDecodeError, ValueError) as e:
+                # If parsing fails, fall back to single-pass
+                log(f"  ⚠️  Two-pass parsing failed ({str(e)}), using single-pass mode")
+                measured_i = None
+            
+            # Second pass: Apply normalization with measured parameters
             if is_video:
                 # Estrai audio e normalizza
+                if measured_i is not None:
+                    # Two-pass normalization
+                    filter_str = (f'loudnorm=I={self.target_lufs}:TP=-1.5:LRA=11:'
+                                f'measured_I={measured_i}:'
+                                f'measured_TP={measured_tp}:'
+                                f'measured_LRA={measured_lra}:'
+                                f'measured_thresh={measured_thresh}:'
+                                f'linear=true')
+                else:
+                    # Single-pass fallback
+                    filter_str = f'loudnorm=I={self.target_lufs}:TP=-1.5:LRA=11'
+                
                 cmd = [
                     ffmpeg_path,
                     '-i', str(input_path),
                     '-vn',  # No video
-                    '-af', f'loudnorm=I={self.target_lufs}:TP=-1.5:LRA=11',
+                    '-af', filter_str,
                     '-c:a', 'aac',
                     '-b:a', '192k',
                     '-ar', '48000',
@@ -154,10 +205,22 @@ class MusicNormalizer:
                 ]
             else:
                 # Normalizza audio mantenendo formato
+                if measured_i is not None:
+                    # Two-pass normalization
+                    filter_str = (f'loudnorm=I={self.target_lufs}:TP=-1.5:LRA=11:'
+                                f'measured_I={measured_i}:'
+                                f'measured_TP={measured_tp}:'
+                                f'measured_LRA={measured_lra}:'
+                                f'measured_thresh={measured_thresh}:'
+                                f'linear=true')
+                else:
+                    # Single-pass fallback
+                    filter_str = f'loudnorm=I={self.target_lufs}:TP=-1.5:LRA=11'
+                
                 cmd = [
                     ffmpeg_path,
                     '-i', str(input_path),
-                    '-af', f'loudnorm=I={self.target_lufs}:TP=-1.5:LRA=11',
+                    '-af', filter_str,
                     '-ar', '48000',
                     '-y',
                     str(output_path)
