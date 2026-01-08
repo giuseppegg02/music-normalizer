@@ -50,22 +50,27 @@ jobs:
             Write-Host "✓ FFmpeg zip downloaded successfully"
             
             Write-Host "Extracting FFmpeg..."
-            Expand-Archive -Path "ffmpeg.zip" -DestinationPath "." -Force
+            Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_temp" -Force
             Write-Host "✓ FFmpeg extracted"
             
             Write-Host "Looking for ffmpeg.exe..."
-            $ffmpeg_path = Get-ChildItem -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+            $ffmpeg_path = Get-ChildItem -Path "ffmpeg_temp" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
             if ($null -eq $ffmpeg_path) {
               throw "ffmpeg.exe not found in archive!"
             }
             
             Write-Host "Copying ffmpeg.exe to current directory..."
-            Copy-Item $ffmpeg_path.FullName -Destination "ffmpeg.exe" -Force
+            Copy-Item $ffmpeg_path.FullName -Destination ".\ffmpeg.exe" -Force
             Write-Host "✓ FFmpeg copied to: $(Get-Location)\ffmpeg.exe"
             
+            # Verify
+            if (-Not (Test-Path ".\ffmpeg.exe")) {
+              throw "ffmpeg.exe was not copied successfully!"
+            }
+            
             Write-Host "Cleaning up..."
-            Remove-Item "ffmpeg.zip" -Force
-            Get-ChildItem -Directory -Filter "*ffmpeg*" | Remove-Item -Recurse -Force
+            Remove-Item "ffmpeg.zip" -Force -ErrorAction SilentlyContinue
+            Remove-Item "ffmpeg_temp" -Recurse -Force -ErrorAction SilentlyContinue
             Write-Host "✓ Cleanup complete"
           }
           catch {
