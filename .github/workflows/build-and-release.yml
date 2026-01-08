@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: write
-  releases: write
 
 jobs:
   build:
@@ -84,7 +83,7 @@ jobs:
           Write-Host "Current directory: $(Get-Location)"
           Write-Host "Files in current directory:"
           Get-ChildItem | Where-Object {$_.Name -match "normalize|ffmpeg"} | ForEach-Object { Write-Host "  - $($_.Name)" }
-          
+
           python -m PyInstaller normalize_music.spec --clean -y
           if ($LASTEXITCODE -ne 0) {
             Write-Error "PyInstaller build failed with exit code $LASTEXITCODE"
@@ -97,7 +96,7 @@ jobs:
         run: |
           Write-Host "Checking build output..."
           Write-Host "Current directory: $(Get-Location)"
-          
+
           if (Test-Path "dist") {
             Write-Host "✓ dist/ directory exists"
             Get-ChildItem dist -Recurse | ForEach-Object { Write-Host "  - $($_.FullName)" }
@@ -105,12 +104,12 @@ jobs:
             Write-Error "dist/ directory not found!"
             exit 1
           }
-          
+
           if (-Not (Test-Path "dist\normalize_music.exe")) {
             Write-Error "Build failed: normalize_music.exe not found"
             exit 1
           }
-          
+
           $file = Get-Item "dist\normalize_music.exe"
           $size = $file.Length / 1MB
           Write-Host "✓ Build successful!"
