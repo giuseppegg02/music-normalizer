@@ -7,3 +7,29 @@ __pycache__/
 *.tmp
 *.log
 
+# Virtual environments
+venv/
+.venv/
+ENV/
+env/
+
+# PyInstaller build
+build/
+dist/
+*.exe
+
+# FFmpeg (downloaded by CI)
+ffmpeg.exe
+ffmpeg-*.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
