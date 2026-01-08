@@ -27,6 +27,15 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.13"
+          cache: pip
+
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: |
@@ -34,26 +43,80 @@ jobs:
           pip install pyinstaller
 
       - name: Download ffmpeg
+        shell: pwsh
         run: |
-          # Scarica ffmpeg per Windows (build statico)
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile "ffmpeg.zip"
-          Expand-Archive -Path "ffmpeg.zip" -DestinationPath "."
-          Copy-Item "ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe" -Destination "."
-          Remove-Item "ffmpeg.zip"
-          Remove-Item "ffmpeg-master-latest-win64-gpl" -Recurse
+          Write-Host "Starting FFmpeg download..."
+          try {
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile "ffmpeg.zip"
+            Write-Host "✓ FFmpeg zip downloaded successfully"
+            
+            Write-Host "Extracting FFmpeg..."
+            Expand-Archive -Path "ffmpeg.zip" -DestinationPath "." -Force
+            Write-Host "✓ FFmpeg extracted"
+            
+            Write-Host "Looking for ffmpeg.exe..."
+            $ffmpeg_path = Get-ChildItem -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+            if ($null -eq $ffmpeg_path) {
+              throw "ffmpeg.exe not found in archive!"
+            }
+            
+            Write-Host "Copying ffmpeg.exe to current directory..."
+            Copy-Item $ffmpeg_path.FullName -Destination "ffmpeg.exe" -Force
+            Write-Host "✓ FFmpeg copied to: $(Get-Location)\ffmpeg.exe"
+            
+            Write-Host "Cleaning up..."
+            Remove-Item "ffmpeg.zip" -Force
+            Get-ChildItem -Directory -Filter "*ffmpeg*" | Remove-Item -Recurse -Force
+            Write-Host "✓ Cleanup complete"
+          }
+          catch {
+            Write-Error "FFmpeg download failed: $_"
+            exit 1
+          }
 
       - name: Build executable with PyInstaller
+        shell: pwsh
         run: |
+          Write-Host "Starting PyInstaller build..."
+          Write-Host "Python version: $(python --version)"
+          Write-Host "PyInstaller version: $(python -m PyInstaller --version)"
+          Write-Host "Current directory: $(Get-Location)"
+          Write-Host "Files in current directory:"
+          Get-ChildItem | Where-Object {$_.Name -match "normalize|ffmpeg"} | ForEach-Object { Write-Host "  - $($_.Name)" }
+          
           python -m PyInstaller normalize_music.spec --clean -y
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "PyInstaller build failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+          Write-Host "✓ Build completed successfully"
 
       - name: Check build output
+        shell: pwsh
         run: |
+          Write-Host "Checking build output..."
+          Write-Host "Current directory: $(Get-Location)"
+          
+          if (Test-Path "dist") {
+            Write-Host "✓ dist/ directory exists"
+            Get-ChildItem dist -Recurse | ForEach-Object { Write-Host "  - $($_.FullName)" }
+          } else {
+            Write-Error "dist/ directory not found!"
+            exit 1
+          }
+          
           if (-Not (Test-Path "dist\normalize_music.exe")) {
             Write-Error "Build failed: normalize_music.exe not found"
             exit 1
           }
-          $size = (Get-Item "dist\normalize_music.exe").Length / 1MB
-          Write-Host "Build successful! File size: $([Math]::Round($size, 2)) MB"
+          
+          $file = Get-Item "dist\normalize_music.exe"
+          $size = $file.Length / 1MB
+          Write-Host "✓ Build successful!"
+          Write-Host "  File: $($file.Name)"
+          Write-Host "  Size: $([Math]::Round($size, 2)) MB"
+          Write-Host "  Path: $($file.FullName)"
 
       - name: Create Release
         if: success()
