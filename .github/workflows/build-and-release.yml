@@ -5,30 +5,34 @@ on:
     branches:
       - main
     paths:
-      - 'normalize_music.py'
-      - 'normalize_music.spec'
-      - 'version_info.txt'
-      - '.github/workflows/build-and-release.yml'
+      - "normalize_music.py"
+      - "normalize_music.spec"
+      - "version_info.txt"
+      - ".github/workflows/build-and-release.yml"
   workflow_dispatch:
+
+permissions:
+  contents: write
+  releases: write
 
 jobs:
   build:
     runs-on: windows-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.13'
-          
+          python-version: "3.13"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          
+
       - name: Download ffmpeg
         run: |
           # Scarica ffmpeg per Windows (build statico)
@@ -37,11 +41,11 @@ jobs:
           Copy-Item "ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe" -Destination "."
           Remove-Item "ffmpeg.zip"
           Remove-Item "ffmpeg-master-latest-win64-gpl" -Recurse
-          
+
       - name: Build executable with PyInstaller
         run: |
           python -m PyInstaller normalize_music.spec --clean -y
-          
+
       - name: Check build output
         run: |
           if (-Not (Test-Path "dist\normalize_music.exe")) {
@@ -50,31 +54,31 @@ jobs:
           }
           $size = (Get-Item "dist\normalize_music.exe").Length / 1MB
           Write-Host "Build successful! File size: $([Math]::Round($size, 2)) MB"
-          
+
       - name: Create Release
         if: success()
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: dist/normalize_music.exe
           tag_name: v${{ github.run_number }}
           name: "Release v${{ github.run_number }}"
           body: |
             ## 🎵 Music Normalizer Build
-            
+
             **Build Info:**
             - Commit: ${{ github.sha }}
             - Trigger: ${{ github.event_name }}
             - Build Number: ${{ github.run_number }}
-            
+
             **Files included:**
             - `normalize_music.exe` - Standalone executable (no installation required)
-            
+
             **What's new:**
             - Multi-threaded audio/video loudness normalization
             - Supports MP3, FLAC, WAV, M4A, OGG, OPUS, AAC, WMA, MP4, MKV, AVI, MOV, WMV, FLV, WEBM
             - Two-pass loudness normalization to prevent clipping
             - Automatic FFmpeg detection
-            
+
             **Usage:**
             1. Download `normalize_music.exe`
             2. Place it in your music folder
@@ -84,4 +88,4 @@ jobs:
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
