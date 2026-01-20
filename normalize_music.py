@@ -335,12 +335,6 @@ class NormalizerGUI:
         
     def check_ffmpeg_status(self):
         """Verifica disponibilità ffmpeg (eseguito in thread separato)"""
-        # Show checking status immediately
-        self.root.after(0, lambda: self.ffmpeg_status.config(
-            text="⏳ Verifica ffmpeg in corso...", 
-            foreground='gray'
-        ))
-        
         normalizer = MusicNormalizer()
         available, path = normalizer.check_ffmpeg()
         
@@ -357,6 +351,7 @@ class NormalizerGUI:
                 foreground='red'
             ))
             self.root.after(0, lambda: self.start_btn.config(state='disabled'))
+            # Note: self.log() is already thread-safe (uses queue)
             self.log("\n⚠️  ATTENZIONE: ffmpeg non trovato!")
             self.log("\nPer usare questo programma devi:")
             self.log("1. Scaricare ffmpeg da: https://ffmpeg.org/download.html")
