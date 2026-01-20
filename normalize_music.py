@@ -259,7 +259,8 @@ class NormalizerGUI:
         self.log_queue = queue.Queue()
         
         self.setup_ui()
-        self.check_ffmpeg_status()
+        # Check ffmpeg in background to avoid blocking startup
+        threading.Thread(target=self.check_ffmpeg_status, daemon=True).start()
         self.root.after(100, self.process_log_queue)
         
     def setup_ui(self):
@@ -296,12 +297,12 @@ class NormalizerGUI:
         target_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(10, 0))
         
         # Status ffmpeg
-        self.ffmpeg_status = ttk.Label(control_frame, text="", foreground='gray')
+        self.ffmpeg_status = ttk.Label(control_frame, text="⏳ Verifica ffmpeg in corso...", foreground='gray')
         self.ffmpeg_status.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(10, 0))
         
-        # Pulsante avvio
+        # Pulsante avvio (inizialmente disabilitato fino al check ffmpeg)
         self.start_btn = ttk.Button(control_frame, text="▶ Avvia Normalizzazione", 
-                                    command=self.start_processing)
+                                    command=self.start_processing, state='disabled')
         self.start_btn.grid(row=2, column=0, columnspan=2, pady=(15, 0))
         
         # Progress bar
@@ -333,22 +334,24 @@ class NormalizerGUI:
         self.log("="*60 + "\n")
         
     def check_ffmpeg_status(self):
-        """Verifica disponibilità ffmpeg"""
+        """Verifica disponibilità ffmpeg (eseguito in thread separato)"""
         normalizer = MusicNormalizer()
         available, path = normalizer.check_ffmpeg()
         
+        # Update UI from main thread using root.after()
         if available:
-            self.ffmpeg_status.config(
+            self.root.after(0, lambda: self.ffmpeg_status.config(
                 text=f"✓ ffmpeg disponibile", 
                 foreground='green'
-            )
-            self.start_btn.config(state='normal')
+            ))
+            self.root.after(0, lambda: self.start_btn.config(state='normal'))
         else:
-            self.ffmpeg_status.config(
+            self.root.after(0, lambda: self.ffmpeg_status.config(
                 text="✗ ffmpeg NON TROVATO - Metti ffmpeg.exe nella stessa cartella", 
                 foreground='red'
-            )
-            self.start_btn.config(state='disabled')
+            ))
+            self.root.after(0, lambda: self.start_btn.config(state='disabled'))
+            # Note: self.log() is already thread-safe (uses queue)
             self.log("\n⚠️  ATTENZIONE: ffmpeg non trovato!")
             self.log("\nPer usare questo programma devi:")
             self.log("1. Scaricare ffmpeg da: https://ffmpeg.org/download.html")
