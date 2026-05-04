@@ -337,27 +337,147 @@ class NormalizerGUI:
         """Verifica disponibilità ffmpeg (eseguito in thread separato)"""
         normalizer = MusicNormalizer()
         available, path = normalizer.check_ffmpeg()
-        
+
         # Update UI from main thread using root.after()
         if available:
             self.root.after(0, lambda: self.ffmpeg_status.config(
-                text=f"✓ ffmpeg disponibile", 
+                text="✓ ffmpeg disponibile",
                 foreground='green'
             ))
             self.root.after(0, lambda: self.start_btn.config(state='normal'))
         else:
-            self.root.after(0, lambda: self.ffmpeg_status.config(
-                text="✗ ffmpeg NON TROVATO - Metti ffmpeg.exe nella stessa cartella", 
-                foreground='red'
-            ))
-            self.root.after(0, lambda: self.start_btn.config(state='disabled'))
-            # Note: self.log() is already thread-safe (uses queue)
             self.log("\n⚠️  ATTENZIONE: ffmpeg non trovato!")
-            self.log("\nPer usare questo programma devi:")
-            self.log("1. Scaricare ffmpeg da: https://ffmpeg.org/download.html")
-            self.log("2. Estrarre ffmpeg.exe")
-            self.log("3. Metterlo nella stessa cartella di questo programma")
-            self.log("\nOppure installare ffmpeg nel sistema con 'choco install ffmpeg'\n")
+
+            # Ask the user (from the main thread) whether to auto-install
+            user_choice = threading.Event()
+            user_said_yes = [False]
+
+            def ask_user():
+                result = messagebox.askyesno(
+                    "ffmpeg non trovato",
+                    "ffmpeg non è disponibile nel sistema.\n\n"
+                    "Vuoi installarlo automaticamente tramite Chocolatey?\n"
+                    "(Richiede connessione internet e privilegi di amministratore)"
+                )
+                user_said_yes[0] = result
+                user_choice.set()
+
+            self.root.after(0, ask_user)
+            user_choice.wait()
+
+            if user_said_yes[0]:
+                self._install_ffmpeg_via_choco()
+            else:
+                self.root.after(0, lambda: self.ffmpeg_status.config(
+                    text="✗ ffmpeg NON TROVATO - Metti ffmpeg.exe nella stessa cartella",
+                    foreground='red'
+                ))
+                self.root.after(0, lambda: self.start_btn.config(state='disabled'))
+                self.log("\nPer usare questo programma devi:")
+                self.log("1. Scaricare ffmpeg da: https://ffmpeg.org/download.html")
+                self.log("2. Estrarre ffmpeg.exe")
+                self.log("3. Metterlo nella stessa cartella di questo programma")
+                self.log("\nOppure installare ffmpeg nel sistema con 'choco install ffmpeg'\n")
+
+    def _install_ffmpeg_via_choco(self):
+        """Installa Chocolatey e poi ffmpeg (eseguito in thread separato)"""
+        self.root.after(0, lambda: self.ffmpeg_status.config(
+            text="⏳ Installazione ffmpeg in corso...",
+            foreground='orange'
+        ))
+
+        # Step 1 – install Chocolatey via PowerShell
+        self.log("\n⬇️  Installazione Chocolatey in corso...")
+        choco_install_cmd = (
+            r'@"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"'
+            r' -NoProfile -InputFormat None -ExecutionPolicy Bypass'
+            r' -Command "[System.Net.ServicePointManager]::SecurityProtocol = 3072;'
+            r" iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))\""
+            r' && SET "PATH=%PATH%;%ALLUSERSPROFILE%\chocolatey\bin"'
+        )
+        try:
+            result = subprocess.run(
+                choco_install_cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            if result.returncode != 0:
+                self.log(f"✗ Errore installazione Chocolatey:\n{result.stderr}")
+                self._on_install_failed()
+                return
+        except subprocess.TimeoutExpired:
+            self.log("✗ Timeout durante l'installazione di Chocolatey")
+            self._on_install_failed()
+            return
+        except Exception as e:
+            self.log(f"✗ Errore: {e}")
+            self._on_install_failed()
+            return
+
+        self.log("✓ Chocolatey installato")
+
+        # Step 2 – install ffmpeg via choco
+        self.log("⬇️  Installazione ffmpeg tramite Chocolatey...")
+        allusers = os.environ.get('ALLUSERSPROFILE', r'C:\ProgramData')
+        choco_exe = os.path.join(allusers, 'chocolatey', 'bin', 'choco.exe')
+        if not os.path.exists(choco_exe):
+            self.log(f"✗ choco.exe non trovato in: {choco_exe}")
+            self._on_install_failed()
+            return
+        try:
+            result = subprocess.run(
+                [choco_exe, 'install', 'ffmpeg', '-y'],
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            if result.returncode != 0:
+                self.log(f"✗ Errore installazione ffmpeg:\n{result.stderr}")
+                self._on_install_failed()
+                return
+        except subprocess.TimeoutExpired:
+            self.log("✗ Timeout durante l'installazione di ffmpeg")
+            self._on_install_failed()
+            return
+        except Exception as e:
+            self.log(f"✗ Errore: {e}")
+            self._on_install_failed()
+            return
+
+        self.log("✓ ffmpeg installato con successo!")
+
+        # Step 3 – re-check ffmpeg (choco adds ffmpeg to PATH)
+        normalizer = MusicNormalizer()
+        available, path = normalizer.check_ffmpeg()
+        if available:
+            self.root.after(0, lambda: self.ffmpeg_status.config(
+                text="✓ ffmpeg installato e disponibile",
+                foreground='green'
+            ))
+            self.root.after(0, lambda: self.start_btn.config(state='normal'))
+        else:
+            self.log("⚠️  ffmpeg installato ma non ancora nel PATH corrente.")
+            self.log("Riavvia il programma per applicare le modifiche al PATH.")
+            self.root.after(0, lambda: self.ffmpeg_status.config(
+                text="⚠️  Riavvia il programma per completare l'installazione",
+                foreground='orange'
+            ))
+
+    def _on_install_failed(self):
+        """Aggiorna UI e log dopo un'installazione fallita"""
+        self.root.after(0, lambda: self.ffmpeg_status.config(
+            text="✗ ffmpeg NON TROVATO - Metti ffmpeg.exe nella stessa cartella",
+            foreground='red'
+        ))
+        self.root.after(0, lambda: self.start_btn.config(state='disabled'))
+        self.log("\nInstallazione automatica fallita.")
+        self.log("Per usare questo programma devi:")
+        self.log("1. Scaricare ffmpeg da: https://ffmpeg.org/download.html")
+        self.log("2. Estrarre ffmpeg.exe")
+        self.log("3. Metterlo nella stessa cartella di questo programma")
+        self.log("\nOppure installare ffmpeg manualmente con 'choco install ffmpeg'\n")
     
     def log(self, message):
         """Aggiunge messaggio al log"""
