@@ -177,6 +177,7 @@ class MusicNormalizer:
                     measured_thresh = loudness_stats.get('input_thresh')
                     target_offset = loudness_stats.get('target_offset')
                 else:
+                    log(f"  ⚠️  Two-pass stats not found in FFmpeg output (return code: {first_pass_result.returncode}); using volume+limiter fallback")
                     target_offset = None
             except (json.JSONDecodeError, ValueError) as e:
                 log(f"  ⚠️  Two-pass stats parsing failed ({str(e)}); using volume+limiter fallback")
