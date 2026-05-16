@@ -141,11 +141,14 @@ class MusicNormalizer:
             log("⚙️  Normalizzazione (Pass 2/2)...")
             
             # First pass: Get detailed loudness stats for two-pass normalization
+            # Audio-only analysis: disable video/subtitle streams to avoid unnecessary work
             first_pass_cmd = [
                 ffmpeg_path,
                 '-hide_banner',
                 '-nostats',
                 '-i', str(input_path),
+                '-vn',
+                '-sn',
                 '-af', f'loudnorm=I={self.target_lufs}:TP=-1.5:LRA=11:print_format=json',
                 '-f', 'null',
                 '-'
