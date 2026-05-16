@@ -98,6 +98,49 @@ class MusicNormalizer:
                     pass
         
         return integrated, true_peak
+
+    def get_duration(self, file_path: Path, ffmpeg_path: str) -> float:
+        """Restituisce la durata del file in secondi, oppure None se non disponibile."""
+        # Try ffprobe in same folder as ffmpeg or on PATH
+        ffprobe_candidates = []
+        try:
+            ffmpeg_p = Path(ffmpeg_path)
+            if ffmpeg_p.name.lower().startswith('ffmpeg'):
+                ffprobe_candidates.append(str(ffmpeg_p.with_name('ffprobe' + ffmpeg_p.suffix)))
+        except Exception:
+            pass
+        ffprobe_candidates.append('ffprobe')
+
+        for ffprobe in ffprobe_candidates:
+            try:
+                proc = subprocess.run(
+                    [ffprobe, '-v', 'error', '-show_entries', 'format=duration',
+                     '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)],
+                    capture_output=True, text=True, timeout=30
+                )
+                if proc.returncode == 0 and proc.stdout:
+                    try:
+                        return float(proc.stdout.strip())
+                    except ValueError:
+                        pass
+            except Exception:
+                pass
+
+        # Fallback: parse ffmpeg -i output for Duration: HH:MM:SS.mmm
+        try:
+            proc = subprocess.run([ffmpeg_path, '-i', str(file_path)],
+                                  capture_output=True, text=True, timeout=30)
+            stderr = proc.stderr or ''
+            m = re.search(r'Duration:\s*(\d+):(\d+):(\d+\.\d+)', stderr)
+            if m:
+                hours = int(m.group(1))
+                minutes = int(m.group(2))
+                seconds = float(m.group(3))
+                return hours * 3600 + minutes * 60 + seconds
+        except Exception:
+            pass
+
+        return None
     
     def normalize_file(self, input_path: Path, output_path: Path, 
                       ffmpeg_path: str, log_callback=None) -> bool:
@@ -138,6 +181,27 @@ class MusicNormalizer:
                 log(f"✓ Già normalizzato, copiato")
                 import shutil
                 shutil.copy2(input_path, output_path)
+                # Dopo la copia, misura le durate e logga eventuali differenze
+                try:
+                    in_dur = self.get_duration(input_path, ffmpeg_path)
+                    out_dur = self.get_duration(output_path, ffmpeg_path)
+                    if in_dur is not None and out_dur is not None:
+                        diff = out_dur - in_dur
+                        def _fmt(seconds):
+                            h = int(seconds // 3600)
+                            m = int((seconds % 3600) // 60)
+                            s = seconds % 60
+                            return f"{h:02d}:{m:02d}:{s:06.3f}"
+
+                        log(f"  Durata iniziale: {_fmt(in_dur)}")
+                        log(f"  Durata finale:    {_fmt(out_dur)}")
+                        if abs(diff) > 0.1:
+                            log(f"  ⚠️  Differenza durata: {diff:+.3f} sec (possibile trimming)")
+                        else:
+                            log(f"  ✅ Nessuna differenza significativa di durata ({diff:+.3f} sec)")
+                except Exception:
+                    pass
+
                 return True
             
             # Normalizza con two-pass loudnorm
@@ -265,6 +329,30 @@ class MusicNormalizer:
             
             if result.returncode == 0:
                 log(f"✓ Completato: {output_path.name}")
+
+                # Misura e confronta le durate input/output
+                try:
+                    in_dur = self.get_duration(input_path, ffmpeg_path)
+                    out_dur = self.get_duration(output_path, ffmpeg_path)
+
+                    def _fmt(seconds):
+                        h = int(seconds // 3600)
+                        m = int((seconds % 3600) // 60)
+                        s = seconds % 60
+                        return f"{h:02d}:{m:02d}:{s:06.3f}"
+
+                    if in_dur is not None and out_dur is not None:
+                        diff = out_dur - in_dur
+                        log(f"  Durata iniziale: {_fmt(in_dur)}")
+                        log(f"  Durata finale:    {_fmt(out_dur)}")
+                        if abs(diff) > 0.1:
+                            log(f"  ⚠️  Differenza durata: {diff:+.3f} sec (possibile trimming)")
+                        else:
+                            log(f"  ✅ Nessuna differenza significativa di durata ({diff:+.3f} sec)")
+                except Exception:
+                    # Non bloccare il flusso di lavoro se la misurazione fallisce
+                    pass
+
                 return True
             else:
                 log(f"✗ Errore normalizzazione")
