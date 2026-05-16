@@ -21,7 +21,7 @@ This analyzes the audio and outputs measurements:
 
 ### Pass 2: Normalization
 ```bash
-ffmpeg -i input.mp3 -af "loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=-20.5:measured_TP=-1.2:measured_LRA=8.5:measured_thresh=-30.5:linear=true" -ar 48000 output.mp3
+ffmpeg -i input.mp3 -af "loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=-20.5:measured_TP=-1.2:measured_LRA=8.5:measured_thresh=-30.5:offset=1.2:linear=true" -ar 48000 output.mp3
 ```
 This applies accurate normalization using the measured parameters with `linear=true` mode.
 

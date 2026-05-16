@@ -11,6 +11,9 @@ import concurrent.futures
 import json
 import re
 
+TARGET_TRUE_PEAK_DBTP = -1.5
+LIMITER_LIMIT_LINEAR = 10 ** (TARGET_TRUE_PEAK_DBTP / 20)
+
 class MusicNormalizer:
     def __init__(self, target_lufs: float = -16.0):
         self.target_lufs = target_lufs
@@ -149,7 +152,7 @@ class MusicNormalizer:
                 '-i', str(input_path),
                 '-vn',
                 '-sn',
-                '-af', f'loudnorm=I={self.target_lufs}:TP=-1.5:LRA=11:print_format=json',
+                '-af', f'loudnorm=I={self.target_lufs}:TP={TARGET_TRUE_PEAK_DBTP}:LRA=11:print_format=json',
                 '-f', 'null',
                 '-'
             ]
@@ -209,7 +212,7 @@ class MusicNormalizer:
                 # Estrai audio e normalizza
                 if have_two_pass_stats:
                     # Two-pass normalization
-                    filter_str = (f'loudnorm=I={self.target_lufs}:TP=-1.5:LRA=11:'
+                    filter_str = (f'loudnorm=I={self.target_lufs}:TP={TARGET_TRUE_PEAK_DBTP}:LRA=11:'
                                 f'measured_I={measured_i}:'
                                 f'measured_TP={measured_tp}:'
                                 f'measured_LRA={measured_lra}:'
@@ -218,7 +221,7 @@ class MusicNormalizer:
                                 f'linear=true')
                 else:
                     # Fallback that avoids the occasional trimming seen with loudnorm single-pass
-                    filter_str = f'volume={adjustment:+.3f}dB,alimiter=limit=0.841395'
+                    filter_str = f'volume={adjustment:+.3f}dB,alimiter=limit={LIMITER_LIMIT_LINEAR:.6f}'
                 
                 cmd = [
                     ffmpeg_path,
@@ -235,7 +238,7 @@ class MusicNormalizer:
                 # Normalizza audio mantenendo formato
                 if have_two_pass_stats:
                     # Two-pass normalization
-                    filter_str = (f'loudnorm=I={self.target_lufs}:TP=-1.5:LRA=11:'
+                    filter_str = (f'loudnorm=I={self.target_lufs}:TP={TARGET_TRUE_PEAK_DBTP}:LRA=11:'
                                 f'measured_I={measured_i}:'
                                 f'measured_TP={measured_tp}:'
                                 f'measured_LRA={measured_lra}:'
@@ -244,7 +247,7 @@ class MusicNormalizer:
                                 f'linear=true')
                 else:
                     # Fallback that avoids the occasional trimming seen with loudnorm single-pass
-                    filter_str = f'volume={adjustment:+.3f}dB,alimiter=limit=0.841395'
+                    filter_str = f'volume={adjustment:+.3f}dB,alimiter=limit={LIMITER_LIMIT_LINEAR:.6f}'
                 
                 cmd = [
                     ffmpeg_path,
