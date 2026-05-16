@@ -1,6 +1,13 @@
 import os
 import sys
 import subprocess
+
+# On Windows, use CREATE_NO_WINDOW to prevent subprocesses from opening console windows
+IS_WINDOWS = os.name == 'nt'
+try:
+    CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
+except AttributeError:
+    CREATE_NO_WINDOW = 0x08000000
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 from pathlib import Path
@@ -50,7 +57,8 @@ class MusicNormalizer:
             subprocess.run([ffmpeg_path, '-version'], 
                          capture_output=True, 
                          check=True,
-                         timeout=5)
+                         timeout=5,
+                         creationflags=(CREATE_NO_WINDOW if IS_WINDOWS else 0))
             return True, ffmpeg_path
         except Exception:
             return False, None
@@ -76,9 +84,10 @@ class MusicNormalizer:
         ]
         
         result = subprocess.run(cmd, 
-                              capture_output=True, 
-                              text=True,
-                              timeout=300)
+                      capture_output=True, 
+                      text=True,
+                      timeout=300,
+                      creationflags=(CREATE_NO_WINDOW if IS_WINDOWS else 0))
         
         output = result.stderr
         
@@ -116,7 +125,8 @@ class MusicNormalizer:
                 proc = subprocess.run(
                     [ffprobe, '-v', 'error', '-show_entries', 'format=duration',
                      '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)],
-                    capture_output=True, text=True, timeout=30
+                    capture_output=True, text=True, timeout=30,
+                    creationflags=(CREATE_NO_WINDOW if IS_WINDOWS else 0)
                 )
                 if proc.returncode == 0 and proc.stdout:
                     try:
@@ -129,7 +139,8 @@ class MusicNormalizer:
         # Fallback: parse ffmpeg -i output for Duration: HH:MM:SS.mmm
         try:
             proc = subprocess.run([ffmpeg_path, '-i', str(file_path)],
-                                  capture_output=True, text=True, timeout=30)
+                                  capture_output=True, text=True, timeout=30,
+                                  creationflags=(CREATE_NO_WINDOW if IS_WINDOWS else 0))
             stderr = proc.stderr or ''
             m = re.search(r'Duration:\s*(\d+):(\d+):(\d+\.\d+)', stderr)
             if m:
@@ -224,7 +235,8 @@ class MusicNormalizer:
             first_pass_result = subprocess.run(first_pass_cmd, 
                                               capture_output=True, 
                                               text=True,
-                                              timeout=600)
+                                              timeout=600,
+                                              creationflags=(CREATE_NO_WINDOW if IS_WINDOWS else 0))
             
             # Parse first pass output to get measured parameters
             output = first_pass_result.stderr
@@ -339,7 +351,8 @@ class MusicNormalizer:
             result = subprocess.run(cmd, 
                                   capture_output=True, 
                                   text=True,
-                                  timeout=600)
+                                  timeout=600,
+                                  creationflags=(CREATE_NO_WINDOW if IS_WINDOWS else 0))
             
             if result.returncode == 0:
                 log(f"✓ Completato: {output_path.name}")
@@ -531,12 +544,13 @@ class NormalizerGUI:
         )
         try:
             result = subprocess.run(
-                choco_install_cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=300
-            )
+                    choco_install_cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    creationflags=(CREATE_NO_WINDOW if IS_WINDOWS else 0)
+                )
             if result.returncode != 0:
                 self.log(f"✗ Errore installazione Chocolatey:\n{result.stderr}")
                 self._on_install_failed()
@@ -565,7 +579,8 @@ class NormalizerGUI:
                 [choco_exe, 'install', 'ffmpeg', '-y'],
                 capture_output=True,
                 text=True,
-                timeout=300
+                timeout=300,
+                creationflags=(CREATE_NO_WINDOW if IS_WINDOWS else 0)
             )
             if result.returncode != 0:
                 self.log(f"✗ Errore installazione ffmpeg:\n{result.stderr}")
