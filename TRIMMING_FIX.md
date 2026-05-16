@@ -28,7 +28,7 @@ This applies accurate normalization using the measured parameters with `linear=t
 ## Benefits
 - **No trimming**: Audio files maintain their full duration
 - **Better accuracy**: More precise loudness normalization
-- **Fallback safety**: If Pass 1 fails, falls back to single-pass mode
+- **Fallback safety**: If Pass 1 stats can't be parsed, falls back to `volume` + `alimiter` (avoids the occasional trimming seen with loudnorm single-pass)
 - **Linear normalization**: The `linear=true` parameter ensures proper processing
 
 ## Testing
