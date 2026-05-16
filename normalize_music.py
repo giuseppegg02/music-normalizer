@@ -312,15 +312,29 @@ class MusicNormalizer:
                 else:
                     # Fallback that avoids the occasional trimming seen with loudnorm single-pass
                     filter_str = f'volume={adjustment:+.3f}dB,alimiter=limit={LIMITER_LIMIT_LINEAR:.6f}'
-                
-                cmd = [
-                    ffmpeg_path,
-                    '-i', str(input_path),
-                    '-af', filter_str,
-                    '-ar', '48000',
-                    '-y',
-                    str(output_path)
-                ]
+                # Decide codec/bitrate to preserve quality similar to source
+                ext = input_path.suffix.lower()
+                codec_map = {
+                    '.mp3': ('libmp3lame', '320k'),
+                    '.m4a': ('aac', '256k'),
+                    '.aac': ('aac', '256k'),
+                    '.flac': ('flac', None),
+                    '.wav': ('pcm_s16le', None),
+                    '.ogg': ('libvorbis', '192k'),
+                    '.opus': ('libopus', '128k'),
+                    '.wma': (None, None)
+                }
+                codec, bitrate = codec_map.get(ext, (None, None))
+
+                cmd = [ffmpeg_path, '-i', str(input_path), '-af', filter_str]
+                # set codec if known
+                if codec:
+                    cmd += ['-c:a', codec]
+                # set bitrate if known
+                if bitrate:
+                    cmd += ['-b:a', bitrate]
+                # ensure reasonable sample rate
+                cmd += ['-ar', '48000', '-y', str(output_path)]
             
             result = subprocess.run(cmd, 
                                   capture_output=True, 
